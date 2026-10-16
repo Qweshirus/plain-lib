@@ -1,0 +1,1227 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Конструктор лендинга (LanguageModel)</title>
+<style>
+  :root{
+    --bg:#0f1115;
+    --panel:#161922;
+    --panel-2:#1c2029;
+    --border:#2a2f3a;
+    --text:#e8eaf0;
+    --text-dim:#9aa1b2;
+    --accent:#6c8cff;
+    --accent-dim:#3b4a8f;
+    --ok:#3ecf8e;
+    --warn:#e6b450;
+    --err:#ff6b6b;
+    --panel-head-h:47px;
+    font-family:'Segoe UI', Roboto, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--text);}
+  body{display:flex;flex-direction:column;}
+  #appRoot{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
+
+  header{
+    flex:0 0 auto;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 16px;
+    background:var(--panel);
+    border-bottom:1px solid var(--border);
+  }
+  header h1{font-size:15px;font-weight:600;margin:0;}
+  header .sub{font-size:12px;color:var(--text-dim);margin-top:2px;}
+  .status-pill{
+    font-size:11px;padding:4px 10px;border-radius:999px;
+    border:1px solid var(--border);color:var(--text-dim);
+    display:flex;align-items:center;gap:6px;white-space:nowrap;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--text-dim);}
+  .dot.ok{background:var(--ok);}
+  .dot.warn{background:var(--warn);}
+  .dot.err{background:var(--err);}
+
+  .btn{
+    font-size:12px;padding:7px 12px;border-radius:7px;
+    border:1px solid var(--border);background:var(--panel-2);color:var(--text);
+    cursor:pointer;transition:background .15s, border-color .15s;
+  }
+  .btn:hover:not(:disabled){background:#242938;border-color:#3a4151;}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#0b0d12;font-weight:600;}
+  .btn.primary:hover:not(:disabled){background:#7f9bff;}
+
+  main{flex:1 1 auto;display:flex;min-height:0;position:relative;}
+
+  /* Плавающая кнопка возврата правой панели: видна поверх левой панели, когда правая
+     свёрнута в 0 ширины, не занимая места и не мешая левой панели растянуться на весь экран. */
+  .floating-expand-btn{
+    position:absolute;top:calc((var(--panel-head-h) - 28px) / 2);right:10px;z-index:5;
+    width:28px;height:28px;border-radius:7px;padding:0;margin:0;line-height:0;box-sizing:border-box;
+    border:1px solid var(--border);background:var(--panel-2);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    box-shadow:0 2px 10px rgba(0,0,0,.35);transition:background .15s, border-color .15s;
+  }
+  .floating-expand-btn:hover{background:#242938;border-color:#3a4151;}
+  .floating-expand-btn svg{width:15px;height:15px;display:block;}
+  .floating-expand-btn.hidden{display:none;}
+
+  .pane-left{
+    flex:1 1 58%;
+    min-width:0;
+    background:#0b0d11;
+    display:flex;flex-direction:column;
+    border-right:1px solid var(--border);
+  }
+  .pane-left-hidden{display:none;}
+  .pane-left .frame-bar{
+    flex:0 0 auto;height:var(--panel-head-h);box-sizing:border-box;padding:0 12px;font-size:11px;color:var(--text-dim);
+    border-bottom:1px solid var(--border);background:var(--panel);
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  iframe{flex:1 1 auto;width:100%;border:0;background:#fff;}
+
+  .resizer{
+    flex:0 0 6px;width:6px;cursor:col-resize;background:var(--border);
+    position:relative;transition:background .15s;touch-action:none;
+  }
+  .resizer::after{
+    content:'';position:absolute;top:50%;left:50%;width:2px;height:28px;
+    transform:translate(-50%,-50%);background:var(--text-dim);border-radius:2px;opacity:.5;
+  }
+  .resizer:hover,.resizer.dragging{background:var(--accent-dim);}
+  .resizer:hover::after,.resizer.dragging::after{opacity:.9;background:var(--accent);}
+  .resizer-hidden{display:none;}
+
+  .pane-right{
+    flex:1 1 42%;
+    min-width:340px;
+    max-width:620px;
+    display:flex;flex-direction:column;
+    background:var(--bg);
+  }
+  .pane-right.mode-quarter{flex:0 0 25%;min-width:240px;max-width:25%;}
+  .pane-right.mode-full{flex:1 1 100%;min-width:0;max-width:100%;}
+  /* Свёрнуто — панель убирается полностью (0 ширины), чтобы левая часть получала весь экран;
+     видимость возврата обеспечивает плавающая кнопка над левой панелью (floating-expand-btn). */
+  .pane-right.mode-collapsed{flex:0 0 0;min-width:0;max-width:0;overflow:hidden;}
+
+  .pane-right .toolbar{
+    flex:0 0 auto;height:var(--panel-head-h);box-sizing:border-box;padding:0 14px;border-bottom:1px solid var(--border);
+    display:flex;gap:8px;align-items:center;justify-content:space-between;background:var(--panel);
+  }
+  .toolbar-label{font-size:12px;color:var(--text-dim);white-space:nowrap;}
+  .toolbar-controls{display:flex;align-items:center;gap:3px;flex:0 0 auto;}
+
+  .pane-right.mode-collapsed .toolbar-label,
+  .pane-right.mode-collapsed #widthCycleBtn,
+  .pane-right.mode-collapsed .panel-body{display:none;}
+
+  .panel-body{
+    flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+  }
+  .blocks{
+    flex:1 1 auto;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;
+  }
+
+  .block-card{
+    background:transparent;
+    border-radius:10px;
+    padding:6px 2px 10px;
+    display:flex;flex-direction:column;gap:6px;
+    transition:background-color .2s;
+  }
+  .block-card.generating{background:rgba(108,140,255,.05);}
+
+  .card-head{
+    display:flex;align-items:center;gap:8px;
+  }
+  .index-badge{
+    width:18px;height:18px;border-radius:5px;background:var(--panel-2);
+    display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-dim);
+    flex:0 0 auto;
+  }
+  .title-input{
+    flex:1 1 auto;min-width:50px;
+    background:transparent;border:none;outline:none;
+    color:var(--text);font-size:13px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;
+    padding:3px 4px;border-radius:5px;
+  }
+  .title-input:focus{background:var(--panel-2);}
+  .title-input::placeholder{color:var(--text-dim);text-transform:none;font-weight:400;}
+
+  .icon-actions{
+    display:flex;align-items:center;gap:3px;flex:0 0 auto;
+    margin-left:auto;
+  }
+  .icon-btn{
+    width:26px;height:26px;border-radius:6px;border:1px solid transparent;
+    background:transparent;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;padding:0;transition:background .15s, transform .1s;
+  }
+  .icon-btn:hover:not(:disabled){background:var(--panel-2);}
+  .icon-btn:active:not(:disabled){transform:scale(.92);}
+  .icon-btn:disabled{opacity:.3;cursor:not-allowed;}
+  .icon-btn svg{width:14px;height:14px;}
+
+  textarea.prompt-ta{
+    width:100%;resize:none;overflow:hidden;
+    background:transparent;color:var(--text);
+    border:none;outline:none;
+    padding:4px 4px;font-size:12.5px;line-height:1.45;font-family:inherit;
+  }
+  textarea.prompt-ta::placeholder{color:var(--text-dim);}
+
+  .code-label{
+    font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;
+    margin-top:2px;
+  }
+  textarea.code-ta{
+    width:100%;resize:none;overflow:hidden;box-sizing:border-box;
+    background:var(--panel-2);color:var(--text);
+    border:none;outline:none;border-radius:7px;
+    padding:7px 9px;font-size:11.5px;line-height:1.45;
+    font-family:'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+  .btn-row{display:flex;justify-content:flex-end;}
+  .btn-row .btn{font-size:11px;padding:5px 10px;}
+
+  .card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:14px;}
+  .card-msg{font-size:11px;color:var(--text-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .card-msg.err{color:var(--err);}
+  .card-msg.ok{color:var(--ok);}
+
+  .banner{
+    margin:14px;padding:12px 14px;border-radius:9px;
+    background:rgba(230,180,80,.08);border:1px solid rgba(230,180,80,.35);
+    font-size:12px;color:#f0d9a0;line-height:1.5;
+  }
+  .banner code{background:#000;padding:1px 5px;border-radius:4px;font-size:11px;}
+  .banner.hidden{display:none;}
+
+  .empty-state{
+    margin:14px;padding:28px 16px;text-align:center;color:var(--text-dim);font-size:13px;
+    border:1px dashed var(--border);border-radius:10px;
+  }
+</style>
+</head>
+<body>
+<div id="appRoot"></div>
+
+<script>
+// =====================================================================================================================
+// МИНИ-ФРЕЙМВОРК (ядро, реактивность, V-DOM, рендерер) — используется как есть для построения интерфейса приложения
+// =====================================================================================================================
+
+let Q = (x, ...transformers) => {
+    let val = Q.Iray(x) ? x.Q() : x;
+    return transformers.length === 0 ? val : Q.each(transformers, fn => { val = fn(val); }) || val;
+};
+Q.a = Object.assign;
+Q.plg = fnObj => {
+    let curried = {};
+    Object.keys(fnObj).forEach(k => {
+        let fn = fnObj[k];
+        if (fn.length <= 1) return;
+        curried[k + '_'] = (...args) => first => fn(first, ...args);
+        if (fn.length <= 2) return;
+        curried[k + '__'] = (...args) => (first, second) => fn(first, second, ...args);
+    });
+    Q.a(Q, fnObj, curried);
+};
+Q.plg({
+    Idef: obj => obj !== null && obj !== undefined,
+    Iarr: obj => Array.isArray(obj),
+    Istr: obj => typeof obj === 'string',
+    Inum: obj => typeof obj === 'number',
+    Ifn: obj => typeof obj === 'function',
+    Iobj: obj => typeof obj === 'object',
+    Iray: obj => obj instanceof Ray,
+    Inode: obj => obj instanceof Node,
+    set: (obj, prop) => val => { if (Q.Idef(obj)) obj[prop] = val; },
+    brake: obj => Q.Iarr(obj) ? obj : Q.Idef(obj) ? [obj] : [],
+    ctn: text => document.createTextNode(text),
+    cel: tag => document.createElement(tag),
+    frag: () => document.createDocumentFragment(),
+    ael: (el, parent) => parent.appendChild(el),
+    rel: (el, parent) => parent.removeChild(el),
+    each: (arr, action) => arr.forEach(action),
+    map: (arr, transformer) => arr.map(transformer),
+    sel: (arr, predicate) => arr.filter(predicate),
+    glue: (arr, delimiter) => arr.join(delimiter),
+    flat: arr => arr.flat(Infinity),
+    setRef: (ref, el) => Q.Iray(ref) ? ref.$(el) :
+                         Q.Ifn(ref) ? ref(el) :
+                         Q.set(ref, 'current')(el),
+});
+
+function Ray(value, fn = 0, defer = true) {
+    this._v = value;
+    this._k = new Set();
+    if (fn) {
+        this.Ifn = fn;
+        this._cln = this._dsp = this._running = 0;
+        this._ot = new Set();
+        this.Idefer = defer;
+        this._done = -1;
+        this._mark = Ray._tick;
+    }
+}
+Q.a(Ray, {
+    _curr: null,
+    _tick: 0,
+    _lnk: (src, dst) => { dst._ot.add(src); src._k.add(dst); },
+    _tapK: ray => Q.each([...ray._k], Ray._tap),
+    _tap: ray => {
+        if (ray._mark === Ray._tick) return;
+        ray._mark = Ray._tick;
+        !ray.Idefer && Ray._run(ray);
+        Ray._tapK(ray);
+    },
+    _unlnkall: ray => { Q.each(ray._ot, dep => dep._k.delete(ray)); ray._ot.clear(); },
+    _run: ray => {
+        if (ray._running) return;
+        ray._running = true;
+        Ray._unlnkall(ray);
+        ray._cln && ray._cln();
+        ray._cln = 0;
+        let prev = Ray._curr;
+        Ray._curr = ray;
+        try {
+            ray._v = ray.Ifn(Q.set(ray, '_cln'), Q.set(ray, '_dsp'));
+        } finally {
+            // Защита: если вычисление упало с ошибкой, всё равно восстанавливаем
+            // Ray._curr и ray._running — иначе один сбойный эффект ломает реактивность
+            // во всём приложении навсегда (контекст трекинга зависимостей остаётся испорченным).
+            Ray._curr = prev;
+            ray._running = false;
+        }
+        ray._done = Ray._tick;
+        return ray;
+    },
+});
+let dat = init => new Ray(init);
+let imm = fn => Ray._run(new Ray(0, fn, false));
+let calc = fn => new Ray(0, fn, true);
+Q.a(Ray.prototype, {
+    Q() {
+        this.Ifn && this._mark === Ray._tick && this._done !== Ray._tick && Ray._run(this);
+        Ray._curr && Ray._lnk(this, Ray._curr);
+        return this._v;
+    },
+    is(v) { return Q(this) === v; },
+    $(v) {
+        if (this._v === v) return v;
+        this._v = v;
+        Ray._tick++;
+        Ray._tapK(this);
+        return v;
+    },
+    Q$(fn) { this.$(fn(Q(this))); },
+    dispose() {
+        this._cln && this._cln();
+        this._dsp && this._dsp();
+        Ray._unlnkall(this);
+        this._k.clear();
+        this.Ifn = null;
+    }
+});
+
+let V = (t = '') => {
+    // isDyn/readMaybe: предикат в .css()/.style() можно передать не только как обычное
+    // логическое значение, но и как функцию или Ray (calc) — тогда итоговый class/style
+    // становится реактивным. readMaybe достаёт текущее значение из любого из этих видов.
+    //
+    // Важно: при цепочке из нескольких .css()/.style() эти вклады НЕЛЬЗЯ сворачивать
+    // попарно в calc(calc(calc(...))) — вложенные друг в друга ленивые (calc) Ray дают
+    // многоуровневый "алмаз" зависимостей, в котором движок реактивности (Ray._tap/_run)
+    // при перекрёстном срабатывании нескольких параллельных веток может прочитать часть
+    // веток ещё по старому значению (эффект уже успел синхронно выполниться по одной ветке
+    // раньше, чем дошла отметка "грязный" по другой) — итог: класс/стиль "залипает" или
+    // накапливает старые значения. Поэтому все .css()/.style()-вклады накапливаются в
+    // плоский список (cssParts/styleParts) и на каждый вызов пересобираются в ОДИН новый
+    // calc, который читает предикаты напрямую, без промежуточных calc-слоёв.
+    let isDyn = x => Q.Iray(x) || Q.Ifn(x),
+        readMaybe = x => Q.Ifn(x) ? x() : Q(x),
+        classcmb = (a, b) => (isDyn(a) || isDyn(b))
+            ? calc(() => Q.glue(Q.sel([readMaybe(a), readMaybe(b)], Boolean), ' '))
+            : Q.glue(Q.sel([a, b], Boolean), ' '),
+        maycalc = x => Q.Ifn(x) && x._V !== 1 ? calc(x) : x,
+        calcmap = list => Q.map(list, maycalc),
+        build = (a, _ref, cssParts = [], styleParts = []) => {
+            let v = (key, value) => Q.Iobj(key) ? build({ ...a, ...key }, _ref, cssParts, styleParts) : build({ ...a, [key]: maycalc(value) }, _ref, cssParts, styleParts);
+            Q.a(v, {
+                _V: 1,
+                _ref,
+                t: t._V ? t.t : t,
+                a: t._V ? { ...t.a, ...a, class: classcmb(t.a.class, a.class) } : a,
+                css: (classes, predicate = true, elseclasses = '') => {
+                    let parts = [...cssParts, { classes, predicate, elseclasses }];
+                    let val = parts.some(p => isDyn(p.predicate))
+                        ? calc(() => Q.glue(Q.sel(parts.map(p => (readMaybe(p.predicate) ? p.classes : p.elseclasses)), Boolean), ' '))
+                        : Q.glue(Q.sel(parts.map(p => (p.predicate ? p.classes : p.elseclasses)), Boolean), ' ');
+                    return build({ ...a, class: val }, _ref, parts, styleParts);
+                },
+                of: (...content) => build({ ...a, of: a.of ? [...Q.brake(a.of), ...calcmap(content)] : calcmap(content) }, _ref, cssParts, styleParts),
+                style: (css, predicate = true) => {
+                    let parts = [...styleParts, { css, predicate }];
+                    let val = parts.some(p => isDyn(p.predicate))
+                        ? calc(() => parts.map(p => (readMaybe(p.predicate) ? p.css : '')).join(''))
+                        : parts.map(p => (p.predicate ? p.css : '')).join('');
+                    return build({ ...a, style: val }, _ref, cssParts, parts);
+                },
+                on: (event, handler) => build({ ...a, ['on' + event]: handler }, _ref, cssParts, styleParts),
+                ref: _ref => build(a, _ref, cssParts, styleParts),
+            });
+            return v;
+        };
+    let a = {};
+    if (Q.Istr(t)) {
+        let lbrakeIndex = t.indexOf('{');
+        let rbrakeIndex = t.indexOf('}');
+        if (lbrakeIndex > -1) {
+            a.style = rbrakeIndex > -1 ? t.substring(lbrakeIndex + 1, rbrakeIndex) : t.substring(lbrakeIndex + 1);
+            t = t.substring(0, lbrakeIndex);
+        }
+        let classNames = [];
+        [t, ...classNames] = t.split('.');
+        if (t === '') t = 'div';
+        a.class = Q.glue(classNames, ' ');
+    }
+    return build(a, 0);
+};
+
+let refresh = (parent, itm, ...args) => {
+    let els = [], lastVal = null, firstTime = true, keyMap = new Map(), oldEls, usedOld, newNodes,
+    clearRef = el => el.dataset['!ref'] && Q.setRef(el.dataset['!ref'], null),
+    addItem = (item, i) => {
+        let k = item?._V ? (item.a?.key ?? i) : i;
+        let fresh = newNodes[i];
+        let old = (k && keyMap.has(k)) ? keyMap.get(k) : (i < oldEls.length ? oldEls[i] : null);
+        if (old && fresh) {
+            parent.replaceChild(fresh, old);
+            clearRef(old);
+            k && keyMap.set(k, fresh);
+            els[i] = fresh;
+            usedOld.add(old);
+        } else if (fresh) {
+            Q.ael(fresh, parent);
+            k && keyMap.set(k, fresh);
+            els[i] = fresh;
+        }
+    },
+    removeItem = el => {
+        if (usedOld.has(el)) return;
+        clearRef(el);
+        if (el.parentNode === parent) Q.rel(el, parent);
+    },
+    complex = newVal => {
+        oldEls = [...els];
+        usedOld = new Set();
+        Q.each(newVal, addItem);
+        Q.each(oldEls, removeItem);
+        els = Q.sel(els, Boolean);
+        lastVal = newVal;
+    },
+    single = newVal => {
+        Q.each(els, el => Q.rel(el, parent));
+        els = [];
+        keyMap.clear();
+        let frag = Q.frag();
+        itm(frag, newVal, ...args);
+        let fc;
+        while (fc = frag.firstChild) { Q.ael(fc, parent); els.push(fc); }
+        Q.Iarr(newVal) && Q.each(newVal, (item, idx) => {
+            const key = item?._V ? item.a?.key : null;
+            key && els[idx] && keyMap.set(key, els[idx]);
+        });
+    };
+    return {
+        step: newVal => {
+            let frag = Q.frag();
+            itm(frag, newVal, ...args);
+            newNodes = [...frag.childNodes];
+            // Примечание: ключевой частичный diff (complex) из исходного файла содержит баг —
+            // при вставке/перестановке элементов он может переиспользовать keyMap-запись, уже
+            // отвязанную от DOM другим элементом, и попытаться заменить узел, которого больше нет
+            // в родителе (DOMException: replaceChild). Поэтому список всегда перестраивается через
+            // надёжный single() — это гарантированно корректно для add/delete/move.
+            single(newVal);
+            lastVal = newVal;
+            firstTime = false;
+        }
+    };
+};
+
+let withRef = fn => (Q.set(fn, '!ref')(true), fn);
+
+let toDom = {
+    _ap: (val, fnDef, vlUndef) => val == null ? vlUndef : fnDef(val),
+    _txt: (obj, name, ray) => Q.set(obj, name)(toDom._ap(Q(ray), String, '')),
+    text: (el, ray) => imm(() => toDom._txt(el, 'textContent', ray)),
+    prop: (el, name, ray) => imm(Q.set(el, name)(Q(ray))),
+    mass: (el, name, propOrMap, ray) => Q.Istr(propOrMap)
+        ? imm(() => toDom._txt(el[name], propOrMap, ray))
+        : imm(() => Q.each(Object.entries(propOrMap), ([key, value]) => toDom._txt(el[name], key, value))),
+    event: (el, event, handler, cln) => {
+        let listener = e => handler.call(el, e);
+        el.addEventListener(event, listener);
+        cln && cln(() => el.removeEventListener(event, listener));
+    },
+    // Примечание: ключ 'class' (из короткого синтаксиса V('tag.class') и метода .css())
+    // не является настоящим DOM-свойством — в отличие от 'className' запись в el.class
+    // ничего не меняет на экране. Поэтому такой ключ транслируется в 'className'. Также
+    // 'style' теперь проверяется на реактивность (Ray/calc), а не только как литеральная
+    // строка, иначе реактивный .style()/calc() для стиля молча не применялся бы.
+    attr: el => ([key, value]) => {
+        const pk = key === 'class' ? 'className' : key;
+        return key === 'of'                          ? 0 :
+            key.startsWith('on') && Q.Ifn(value)  ? toDom.event(el, key.slice(2), value) :
+            key === 'style' && Q.Iray(value)      ? imm(() => Q.set(el.style, 'cssText')(Q(value))) :
+            key === 'style'                       ? Q.set(el.style, 'cssText')(value) :
+            Q.Iray(value)                         ? imm(() => Q.set(el, pk)(Q(value))) :
+            Q.Ifn(value)                          ? toDom.attr(el)([pk, value()]) :
+                                                    Q.set(el, pk)(value);
+    },
+    arr: (parent, arr, ...args) => Q.each(arr, it => toDom.itm(parent, it, ...args)),
+    ray: (parent, ray, ...args) => {
+        let rec = refresh(parent, toDom.itm, ...args);
+        imm(() => rec.step(Q(ray)));
+    },
+    itm: (parent, obj, ...args) =>
+        obj?._V                    ? toDom.V(parent, obj, ...args) :
+        Q.Iray(obj)                ? toDom.ray(parent, obj, ...args) :
+        Q.Ifn(obj)                 ? toDom.itm(parent, obj(), ...args) :
+        Q.Iarr(obj)                ? toDom.arr(parent, obj, ...args) :
+        Q.Istr(obj) || Q.Inum(obj) ? Q.ael(Q.ctn(String(obj)), parent) :
+        Q.Inode(obj)               ? obj : null,
+    _V: (parent, vDom, ...args) => {
+        let el = Q.cel(vDom.t);
+        Q.each(Object.entries(vDom.a), toDom.attr(el));
+        Q(vDom.a.of, Q.brake, Q.map_(x => toDom.itm(el, x, ...args)));
+        Q.ael(el, parent);
+        if (!vDom._ref) return;
+        Q.set(el.dataset, '__ref__')(vDom.ref);
+        Q.setRef(vDom._ref, el);
+    },
+    V: (parent, vDom, ...args) =>
+        vDom.t['!ref']            ? toDom.itm(parent, vDom.t(vDom._ref)(vDom.a), ...args) :
+        Q.Ifn(vDom.t)             ? toDom.itm(parent, vDom.t(vDom.a), ...args) :
+                                    toDom._V(parent, vDom, ...args),
+};
+Q.plg({
+    gel: id => document.getElementById(id),
+    append: (arr, item) => [...arr, item],
+    update: (arr, predicate, transformer) => Q.map(arr, item => predicate(item) ? transformer(item) : item),
+    remove: (arr, predicate) => Q.sel(arr, item => !predicate(item)),
+});
+
+// =====================================================================================================================
+// ПРИЛОЖЕНИЕ: Конструктор лендинга — построено поверх V / dat / calc / toDom
+// =====================================================================================================================
+(() => {
+  'use strict';
+
+  // v2: блоки теперь хранят код на V()-DSL (поле code/codeDraft), а не готовый HTML —
+  // старый формат (только html/htmlDraft) с этой версией не совместим, поэтому ключ хранения
+  // сменён, чтобы несовместимые старые данные просто не подхватились и заменились дефолтными.
+  const STORAGE_KEY = 'landingBuilder.blocks.v2';
+  const UI_STORAGE_KEY = 'landingBuilder.ui.v1';
+  const WIDTH_ORDER = ['quarter', 'full', 'default'];
+
+  // ---------- Иконки (разноцветные SVG-строки) ----------
+  const ICONS = {
+    regen: `<svg viewBox="0 0 24 24" fill="none" stroke="#6c8cff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.3-6.4L21 8M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.3 6.4L3 16M3 21v-5h5"/></svg>`,
+    add:   `<svg viewBox="0 0 24 24" fill="none" stroke="#3ecf8e" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+    del:   `<svg viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg>`,
+    up:    `<svg viewBox="0 0 24 24" fill="none" stroke="#e6b450" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6 11l6-6 6 6"/></svg>`,
+    down:  `<svg viewBox="0 0 24 24" fill="none" stroke="#b47ee6" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v13M18 13l-6 6-6-6"/></svg>`,
+    panelCollapse: `<svg viewBox="0 0 24 24" fill="none" stroke="#5fd0d9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16M18 10l-2 2 2 2"/></svg>`,
+    panelExpand:   `<svg viewBox="0 0 24 24" fill="none" stroke="#5fd0d9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16M17 10l2 2-2 2"/></svg>`,
+    panelResize:   `<svg viewBox="0 0 24 24" fill="none" stroke="#f2994a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>`
+  };
+
+  function uid(){ return 'b' + Math.random().toString(36).slice(2, 10); }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Экранирование для вставки строки внутрь одинарных кавычек в сгенерированном JS-коде блока.
+  function escapeJsString(s){
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+  }
+
+  // Плейсхолдер блока — теперь тоже код на V()-DSL (а не HTML), как и всё остальное
+  // содержимое блоков: рендерится в HTML тем же renderCodeSafe(), что и код от модели.
+  function placeholderCode(title, classes){
+    const classExpr = classes.trim().split(/\s+/).join('.');
+    return `V('section.${classExpr}').of(
+  V('div.max-w-6xl.mx-auto.px-6.py-16.text-center').of(
+    V('p.text-xs.uppercase.tracking-widest.opacity-60.mb-2').of('${escapeJsString(title)}'),
+    V('p.text-sm.opacity-70').of('Плейсхолдер блока. Нажмите кнопку «Перегенерировать» ниже, чтобы создать контент через LanguageModel.')
+  )
+)`;
+  }
+
+  function defaultBlocksData(){
+    return [
+      {
+        id: uid(), label: 'HERO',
+        prompt: 'Хиро-секция для сайта фронтенд-фреймворка «plain-lib» — компактного реактивного JS-фреймворка без виртуального DOM: мелкогранулярная реактивность (Ray/calc/imm/dat) и hyperscript-билдер V() с цепочками вызовов вместо JSX. Крупный заголовок, подзаголовок про «реактивность без virtual DOM и сборки», кнопка «Начать» и кнопка «Документация», справа — заглушка под блок с примером кода. Тёмный акцент — бирюзовый/индиго.',
+        code: placeholderCode('HERO', 'bg-slate-950 text-white')
+      },
+      {
+        id: uid(), label: 'ПРЕИМУЩЕСТВА',
+        prompt: 'Секция с тремя карточками преимуществ фреймворка plain-lib: «Мелкогранулярная реактивность» (Ray/calc/imm/dat без виртуального DOM и лишних перерисовок), «Hyperscript вместо JSX» (V(\'div.class\') с цепочками атрибутов и .of() для детей, не нужен транспайлер), «Компоненты как функции» (V(component)(\'prop\', value) — применение пропсов цепочкой). У каждой карточки — иконка-эмодзи, заголовок и короткое описание.',
+        code: placeholderCode('ПРЕИМУЩЕСТВА', 'bg-white text-slate-900')
+      },
+      {
+        id: uid(), label: 'КАК ЭТО РАБОТАЕТ',
+        prompt: 'Секция «Как это работает» для фреймворка plain-lib: слева короткое пояснение текстом, справа — блок с примером кода (моноширинный шрифт, тёмная подложка) вида V(\'section.bg-indigo-900.py-20\').of(V(\'h1.text-4xl\').of(\'Заголовок\')) — демонстрация синтаксиса hyperscript-билдера V() с цепочками атрибутов и .of() для детей.',
+        code: placeholderCode('КАК ЭТО РАБОТАЕТ', 'bg-slate-50 text-slate-900')
+      },
+      {
+        id: uid(), label: 'РЕАКТИВНОСТЬ',
+        prompt: 'Секция, объясняющая реактивную модель plain-lib: три колонки — «dat()» (создаёт изменяемое реактивное значение), «calc()» (ленивое вычисляемое значение, пересчитывается только при чтении и только если зависимости изменились), «imm()» (эффект, который выполняется сразу и повторно при изменении зависимостей). Короткое пояснение под каждым термином, без виртуального DOM и без лишних перерисовок.',
+        code: placeholderCode('РЕАКТИВНОСТЬ', 'bg-white text-slate-900')
+      },
+      {
+        id: uid(), label: 'КОМПОНЕНТЫ',
+        prompt: 'Секция про компоненты в plain-lib: компонент — это обычная функция, принимающая один объект пропсов, применяется как V(componentFn)(\'prop\', value)(\'another\', value2) — цепочка вызовов вместо JSX-атрибутов. Текстовое пояснение и блок с примером кода компонента.',
+        code: placeholderCode('КОМПОНЕНТЫ', 'bg-slate-50 text-slate-900')
+      },
+      {
+        id: uid(), label: 'КАК НАЧАТЬ',
+        prompt: 'Секция «Как начать» для plain-lib: фреймворк — один JS-файл без сборки и без зависимостей, подключается напрямую через <script>. Три коротких шага: 1) подключить файл, 2) вызвать toDom.itm для рендера в DOM-контейнер, 3) строить интерфейс через V(). Без вымышленных тарифов или цен — фреймворк просто подключается и используется.',
+        code: placeholderCode('КАК НАЧАТЬ', 'bg-white text-slate-900')
+      },
+      {
+        id: uid(), label: 'ПРИЗЫВ К ДЕЙСТВИЮ',
+        prompt: 'Финальная секция-призыв к действию перед футером: контрастный фон, заголовок «Начните использовать plain-lib уже сегодня», поле для email (подписка на обновления фреймворка) и кнопка «Установить», мелкая подпись про то, что фреймворк — один файл без зависимостей.',
+        code: placeholderCode('ПРИЗЫВ К ДЕЙСТВИЮ', 'bg-indigo-600 text-white')
+      }
+    ];
+  }
+
+  // ---------- Реактивная запись блока: id статичен, остальное — Ray ----------
+  // code — последний применённый код блока на V()-DSL (не HTML!). codeDraft — отдельный
+  // черновик для редактора под ним: пока его не "применили" кнопкой, он не влияет на html
+  // (а значит и на превью слева). html — ВСЕГДА производная величина: результат исполнения
+  // code через renderCodeSafe (см. ниже), а не то, что редактируется напрямую.
+  function makeBlock(id, label, prompt, code, codeDraft){
+    const safeCode = code || '';
+    return {
+      id,
+      label: dat(label),
+      prompt: dat(prompt),
+      code: dat(safeCode),
+      codeDraft: dat(codeDraft !== undefined ? codeDraft : safeCode),
+      html: dat(renderCodeSafe(safeCode)),
+      status: dat('idle'),   // idle | busy | ok | err
+      message: dat('')
+    };
+  }
+
+  function loadInitialBlocksData(){
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultBlocksData();
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0 &&
+          parsed.every(b => b && typeof b.id === 'string' && typeof b.code === 'string')) {
+        return parsed.map(b => ({
+          id: b.id, label: b.label || 'БЛОК', prompt: b.prompt || '', code: b.code,
+          codeDraft: typeof b.codeDraft === 'string' ? b.codeDraft : b.code
+        }));
+      }
+      return defaultBlocksData();
+    } catch (e) {
+      console.warn('Не удалось загрузить блоки из localStorage', e);
+      return defaultBlocksData();
+    }
+  }
+
+  function loadUiState(){
+    try {
+      const raw = localStorage.getItem(UI_STORAGE_KEY);
+      if (!raw) return { panelMode: 'default', customWidth: null };
+      const parsed = JSON.parse(raw);
+      return {
+        panelMode: ['default', 'quarter', 'full', 'collapsed'].includes(parsed.panelMode) ? parsed.panelMode : 'default',
+        customWidth: typeof parsed.customWidth === 'number' && parsed.customWidth > 0 ? parsed.customWidth : null
+      };
+    } catch (e) {
+      console.warn('Не удалось загрузить состояние интерфейса из localStorage', e);
+      return { panelMode: 'default', customWidth: null };
+    }
+  }
+
+  // ---------- Реактивное состояние приложения ----------
+  const initialUi = loadUiState();
+  const blocks = dat(loadInitialBlocksData().map(d => makeBlock(d.id, d.label, d.prompt, d.code, d.codeDraft)));
+  const panelMode = dat(initialUi.panelMode);
+  const customWidth = dat(initialUi.customWidth);
+  const sessionBusy = dat(false);
+  const apiAvailable = dat(false);
+  const apiDotClass = dat('');
+  const apiStatusText = dat('Проверка API…');
+  const bannerHtml = dat(null); // null = баннер скрыт
+
+  let modeBeforeCollapse = initialUi.panelMode === 'collapsed' ? 'default' : initialUi.panelMode;
+
+  // ---------- Персистентность: автосохранение блоков при любом изменении ----------
+  let saveTimer = null;
+  function scheduleSaveBlocks(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try {
+        // html не сохраняем — это производная от code, восстанавливается рендером при загрузке.
+        const data = Q(blocks).map(b => ({
+          id: b.id, label: Q(b.label), prompt: Q(b.prompt), code: Q(b.code), codeDraft: Q(b.codeDraft)
+        }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (e) { console.warn('Не удалось сохранить блоки в localStorage', e); }
+    }, 250);
+  }
+  // Этот эффект перезапускается при любом структурном изменении блоков и при изменении
+  // label/prompt/code/codeDraft любого блока — он сам пересобирает список зависимостей на каждый запуск.
+  imm(() => {
+    const list = Q(blocks);
+    list.forEach(b => { Q(b.label); Q(b.prompt); Q(b.code); Q(b.codeDraft); });
+    scheduleSaveBlocks();
+  });
+
+  // ---------- Персистентность: состояние интерфейса (режим/ширина панели) ----------
+  let uiSaveTimer = null;
+  imm(() => {
+    const mode = Q(panelMode);
+    const cw = Q(customWidth);
+    clearTimeout(uiSaveTimer);
+    uiSaveTimer = setTimeout(() => {
+      try { localStorage.setItem(UI_STORAGE_KEY, JSON.stringify({ panelMode: mode, customWidth: cw || null })); }
+      catch (e) { console.warn('Не удалось сохранить состояние интерфейса в localStorage', e); }
+    }, 200);
+  });
+
+  // ---------- Исполнение кода блока (V()-DSL) и рендер в HTML ----------
+  // Каждый блок хранится как код на хелпере V() приложения, а не как готовый HTML.
+  // Рендерим его тем же движком, что строит весь остальной интерфейс: исполняем код
+  // в изолированной функции (видит только переданные ей V/calc/imm/dat/Q, никаких
+  // переменных приложения), получаем vDOM-узел и монтируем его в отсоединённый <div>
+  // через toDom.itm — innerHTML этого <div> и есть нужный HTML для srcdoc превью.
+  // Примечание: это исполнение JS, не настоящая песочница — код всё равно выполняется
+  // в основном окне страницы (другого способа дать ему V()/toDom нет), так что это
+  // уместно только для локального инструмента, который доверяет собственной модели.
+  function renderCodeToHtml(code){
+    const src = String(code || '').trim().replace(/;\s*$/, '');
+    if (!src) return '';
+    const build = new Function('V', 'calc', 'imm', 'dat', 'Q', `"use strict";\nreturn (\n${src}\n);`);
+    const vnode = build(V, calc, imm, dat, Q);
+    const container = document.createElement('div');
+    toDom.itm(container, vnode);
+    return container.innerHTML;
+  }
+  // Безопасная обёртка для мест, где код блока мог прийти откуда угодно (localStorage,
+  // дефолтные плейсхолдеры) и упасть при рендере не должен ронять всё приложение.
+  function renderCodeSafe(code){
+    try { return renderCodeToHtml(code); }
+    catch (e) {
+      console.warn('Не удалось отрендерить код блока', e);
+      return `<section class="bg-red-50 text-red-700 p-6 text-sm">Ошибка в коде блока: ${escapeHtml(e && e.message ? e.message : String(e))}</section>`;
+    }
+  }
+
+  // ---------- Вызовы LanguageModel ----------
+  function stripCodeFence(text){
+    let t = text.trim();
+    const fence = /^```(?:js|javascript|JS|JavaScript)?\s*([\s\S]*?)\s*```$/m;
+    const m = t.match(fence);
+    if (m) t = m[1].trim();
+    return t.replace(/;\s*$/, '');
+  }
+  async function generateCodeForBlock(promptText){
+    const systemPrompt = `Ты генерируешь блоки лендинг-страницы в виде кода на внутреннем DSL приложения, а НЕ как HTML.
+DSL построен вокруг функции V(), вот её правила:
+• V('тег') создаёт элемент с этим тегом, например V('section') или V('button').
+• Классы Tailwind CSS указываются через точку сразу после тега: V('section.bg-indigo-900.py-20'). Модификаторы (sm:, md:, lg:, hover: и т.п.) пишутся как часть имени класса через точку, например V('div.flex.sm:flex-row').
+• Если нужен div без явного тега — можно начать строку с точки: V('.flex.gap-4').
+• Любые атрибуты, кроме class (src, alt, href, type, placeholder и т.д.), задаются цепочкой вызовов СРАЗУ после V(...), каждый вызов — одна пара имя/значение: V('img.rounded-lg')('src', 'photo.png')('alt', 'Описание').
+• .of(...) используется ТОЛЬКО для дочерних элементов/текста и никогда для атрибутов — у него нет пар имя/значение. Неправильно: V('button').of('title', 'Установить') — так нельзя. Правильно: атрибут отдельной цепочкой вызовов ДО .of(): V('button')('title', 'Установить').of('Установить').
+• Дочерние элементы передаются через .of(...): V('div').of(V('h1').of('Заголовок'), V('p').of('Текст')).
+• Текст — это просто строка внутри .of(...), без обёртки в теги.
+• Самозакрывающиеся элементы (img и т.п.) не пишутся в HTML-стиле — просто V('img...')(...атрибуты...) без .of().
+Пример корректного кода:
+V('section.bg-indigo-900.py-20').of(
+  V('div.container.mx-auto.flex.items-center.gap-8').of(
+    V('h1.text-4xl.font-bold.text-white').of('Заголовок секции'),
+    V('img.w-full.rounded-lg.shadow-md')('src', 'placeholder.png')('alt', 'Скриншот интерфейса'),
+    V('button.bg-white.text-indigo-900.rounded-lg.px-6.py-3')('title', 'Установить').of('Установить')
+  )
+)
+Требования к ответу:
+— верни ОДНО выражение: один вызов V(...) (при необходимости нескольких элементов верхнего уровня оберни их в V().of(...)), без точки с запятой на конце;
+— не используй HTML-теги напрямую и не используй реактивные примитивы фреймворка (calc, imm, dat, Q) — блок статичный;
+— не используй markdown-разметку и не добавляй пояснений — только сам код;
+— делай адаптивную вёрстку (используй sm:, md:, lg: модификаторы классов) и реалистичный текст на русском языке;
+— не подключай скрипты и внешние ресурсы, кроме случаев, когда это явно попросили в промпте;
+— строки везде в одинарных кавычках '...'; если внутри текста нужен апостроф или одинарная кавычка, экранируй её обратным слэшем (\\'), например V('p').of('Это сервис \\'Пример\\''); для кавычек вокруг слов в русском тексте используй «ёлочки» («...») — они не ломают строку и экранировать их не нужно.`;
+    const session = await LanguageModel.create({
+      initialPrompts: [{ role: 'system', content: systemPrompt }]
+    });
+    try {
+      const result = await session.prompt(promptText);
+      return stripCodeFence(result);
+    } finally {
+      session.destroy();
+    }
+  }
+
+  async function regenerateBlock(block){
+    if (Q(sessionBusy)) return;
+    if (!Q(apiAvailable)) {
+      block.status.$('err');
+      block.message.$('LanguageModel недоступен в этом браузере');
+      return;
+    }
+    sessionBusy.$(true);
+    block.status.$('busy');
+    block.message.$('');
+    let newCode;
+    try {
+      newCode = await generateCodeForBlock(Q(block.prompt));
+    } catch (e) {
+      // Ошибка самого обращения к LanguageModel (сеть/API) — сгенерированного кода
+      // нет вообще, черновик трогать нечем.
+      console.error(e);
+      block.status.$('err');
+      block.message.$('Ошибка генерации: ' + (e && e.message ? e.message : String(e)));
+      sessionBusy.$(false);
+      if (Q(block.status) === 'busy') block.status.$('idle');
+      return;
+    }
+    // Что бы ни случилось дальше, сгенерированный код сразу показываем в черновике —
+    // даже если он не рендерится, его можно увидеть в textarea и поправить вручную.
+    block.codeDraft.$(newCode);
+    try {
+      const newHtml = renderCodeToHtml(newCode); // бросит, если модель вернула код с ошибкой
+      // Генерация больше не переписывает промпт по результату — пишем только код,
+      // сразу и в "боевой" block.code (от него явно зависит html → превью слева).
+      block.code.$(newCode);
+      block.html.$(newHtml);
+
+      block.status.$('ok');
+      block.message.$('Готово');
+      setTimeout(() => {
+        if (Q(block.status) === 'ok') { block.status.$('idle'); block.message.$(''); }
+      }, 3500);
+    } catch (e) {
+      // Код сгенерирован, но не рендерится — старый block.code/html НЕ трогаем (превью
+      // остаётся рабочим), но код виден в черновике и его можно вручную поправить и применить.
+      console.error(e);
+      block.status.$('err');
+      block.message.$('Ошибка в сгенерированном коде: ' + (e && e.message ? e.message : String(e)));
+    } finally {
+      sessionBusy.$(false);
+      if (Q(block.status) === 'busy') block.status.$('idle');
+    }
+  }
+
+  async function regenerateAll(){
+    for (const block of [...Q(blocks)]) {
+      if (!Q(blocks).includes(block)) continue; // блок мог быть удалён в процессе
+      await regenerateBlock(block);
+    }
+  }
+
+  // ---------- Применение отредактированного кода-черновика к лендингу ----------
+  // Кнопка под редактором кода исполняет block.codeDraft через renderCodeToHtml и,
+  // только если код выполнился без ошибок, переносит результат в block.code/block.html —
+  // от html реактивно зависит srcdoc превью слева. Ошибка в написанном вручную коде
+  // не портит существующий превью, а просто показывается в статусе блока.
+  function applyCodeDraft(block){
+    let newHtml;
+    try {
+      newHtml = renderCodeToHtml(Q(block.codeDraft));
+    } catch (e) {
+      block.status.$('err');
+      block.message.$('Ошибка в коде блока: ' + (e && e.message ? e.message : String(e)));
+      return;
+    }
+    block.code.$(Q(block.codeDraft));
+    block.html.$(newHtml);
+    block.status.$('ok');
+    block.message.$('Применено к лендингу');
+    setTimeout(() => {
+      if (Q(block.status) === 'ok') { block.status.$('idle'); block.message.$(''); }
+    }, 2500);
+  }
+
+  // ---------- Операции над списком блоков ----------
+  function addBlockAfter(id){
+    blocks.Q$(arr => {
+      const idx = arr.findIndex(b => b.id === id);
+      const nb = makeBlock(uid(), 'НОВЫЙ БЛОК', '', placeholderCode('НОВЫЙ БЛОК', 'bg-white text-slate-900'));
+      const copy = [...arr];
+      if (idx === -1) copy.push(nb); else copy.splice(idx + 1, 0, nb);
+      return copy;
+    });
+  }
+  function addEmptyBlock(){
+    blocks.Q$(arr => [...arr, makeBlock(uid(), 'НОВЫЙ БЛОК', '', placeholderCode('НОВЫЙ БЛОК', 'bg-white text-slate-900'))]);
+  }
+  function deleteBlock(id){
+    blocks.Q$(arr => arr.filter(b => b.id !== id));
+  }
+  function moveBlock(id, dir){
+    blocks.Q$(arr => {
+      const idx = arr.findIndex(b => b.id === id);
+      const ni = idx + dir;
+      if (idx === -1 || ni < 0 || ni >= arr.length) return arr;
+      const copy = [...arr];
+      const [item] = copy.splice(idx, 1);
+      copy.splice(ni, 0, item);
+      return copy;
+    });
+  }
+
+  // ---------- Режим ширины правой панели ----------
+  function applyPanelMode(mode){
+    customWidth.$(null);
+    panelMode.$(mode);
+  }
+  function onCollapseClick(){
+    const mode = Q(panelMode);
+    if (mode === 'collapsed') applyPanelMode(modeBeforeCollapse || 'default');
+    else { modeBeforeCollapse = mode; applyPanelMode('collapsed'); }
+  }
+  function onWidthCycleClick(){
+    const mode = Q(panelMode);
+    if (mode === 'collapsed') { applyPanelMode('quarter'); return; }
+    const idx = WIDTH_ORDER.indexOf(mode);
+    applyPanelMode(WIDTH_ORDER[(idx + 1) % WIDTH_ORDER.length]);
+  }
+
+  // ---------- Проверка доступности LanguageModel ----------
+  async function checkApi(){
+    if (typeof LanguageModel === 'undefined') {
+      apiAvailable.$(false);
+      apiDotClass.$('err');
+      apiStatusText.$('LanguageModel недоступен');
+      bannerHtml.$(`В этом браузере не найден глобальный объект <code>LanguageModel</code> (Prompt API).
+        Эта страница должна быть открыта в свежем Chrome (134+) с включённым флагом
+        <code>chrome://flags/#prompt-api-for-gemini-nano</code>, после чего браузер нужно перезапустить.
+        Пока показаны статичные плейсхолдеры блоков.`);
+      return;
+    }
+    try {
+      const availability = await LanguageModel.availability();
+      if (availability === 'unavailable') {
+        apiAvailable.$(false);
+        apiDotClass.$('err');
+        apiStatusText.$('Модель недоступна');
+        bannerHtml.$('Встроенная модель Gemini Nano недоступна на этом устройстве (не хватает места на диске, GPU или ОС не поддерживается).');
+      } else if (availability === 'downloadable' || availability === 'downloading') {
+        apiAvailable.$(true);
+        apiDotClass.$('warn');
+        apiStatusText.$('Модель загружается…');
+        bannerHtml.$(null);
+      } else {
+        apiAvailable.$(true);
+        apiDotClass.$('ok');
+        apiStatusText.$('LanguageModel готов');
+        bannerHtml.$(null);
+      }
+    } catch (e) {
+      apiAvailable.$(false);
+      apiDotClass.$('err');
+      apiStatusText.$('Ошибка проверки API');
+      bannerHtml.$('Не удалось проверить доступность LanguageModel: ' + escapeHtml(String(e)));
+    }
+  }
+
+  // ---------- Автоподгонка высоты textarea без скроллбара ----------
+  // Пока карточка строится, её узлы живут в отсоединённом DocumentFragment (см. single()
+  // в движке рендера) — там scrollHeight считается некорректно (как для однострочного поля),
+  // поэтому первый вызов для только что созданного, ещё не подключённого элемента откладываем
+  // до следующего кадра, когда он уже встроен в реальный документ.
+  function scheduleAutoGrow(ta){
+    if (ta.isConnected) autoGrow(ta);
+    else requestAnimationFrame(() => autoGrow(ta));
+  }
+  function autoGrow(ta){
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  }
+
+  // ---------- Сборка общего HTML-документа для iframe-предпросмотра ----------
+  function buildPreviewDoc(blockList){
+    const body = blockList.map(b => Q(b.html)).join('\n');
+    return `<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.tailwindcss.com"><\/script>
+<style>body{margin:0;}</style>
+</head><body>${body}</body></html>`;
+  }
+
+  // ---------- Компонент: кнопка-иконка (используется и в тулбаре, и в карточках блоков) ----------
+  // Применяется как компонент: V(iconButton)('iconSvg', ...)('title', ...)('disabled', ...)('className', ...).on('click', fn).
+  // Обработчик клика framework кладёт в пропсы под ключом 'onclick' (так .on('click', fn) и сохраняется),
+  // поэтому деструктурируем именно 'onclick', а не camelCase 'onClick'.
+  function iconButton({ iconSvg, title, disabled, className, onclick }){
+    return V('button')
+      ('title', title)
+      ('innerHTML', iconSvg)
+      ('className', className || 'icon-btn')
+      ('disabled', disabled || false)
+      .on('click', onclick);
+  }
+
+  // ---------- Компонент: карточка одного блока ----------
+  // Применяется как: V(blockCard)('block', b)('index', i)('total', total)('key', b.id)
+  function blockCard({ block, index, total }){
+    return V('div')
+      .css('block-card')
+      .css('generating', () => Q(block.status) === 'busy')
+      .of(
+        V('div.card-head').of(
+          V('span.index-badge').of(String(index + 1)),
+          V('input.title-input')
+            ('placeholder', 'НАЗВАНИЕ БЛОКА')
+            ('spellcheck', 'false')
+            ('value', block.label)
+            .on('input', e => block.label.$(e.target.value)),
+          V('div.icon-actions').of(
+            V(iconButton)('iconSvg', ICONS.add)('title', 'Добавить блок после этого')
+              ('disabled', calc(() => Q(block.status) === 'busy'))
+              .on('click', () => addBlockAfter(block.id)),
+            V(iconButton)('iconSvg', ICONS.del)('title', 'Удалить блок')
+              ('disabled', calc(() => Q(block.status) === 'busy'))
+              .on('click', () => deleteBlock(block.id)),
+            V(iconButton)('iconSvg', ICONS.up)('title', 'Сдвинуть вверх')
+              ('disabled', calc(() => Q(block.status) === 'busy' || index === 0))
+              .on('click', () => moveBlock(block.id, -1)),
+            V(iconButton)('iconSvg', ICONS.down)('title', 'Сдвинуть вниз')
+              ('disabled', calc(() => Q(block.status) === 'busy' || index === total - 1))
+              .on('click', () => moveBlock(block.id, 1))
+          )
+        ),
+        V('textarea.prompt-ta')
+          ('spellcheck', 'false')
+          ('rows', 1)
+          .ref(el => { imm(() => { el.value = Q(block.prompt); scheduleAutoGrow(el); }); })
+          .on('input', e => { block.prompt.$(e.target.value); autoGrow(e.target); }),
+        V('div.btn-row').of(
+          V('button.btn')
+            ('disabled', calc(() => Q(block.status) === 'busy'))
+            .on('click', () => regenerateBlock(block))
+            .of(calc(() => Q(block.status) === 'busy' ? 'Генерация…' : 'Перегенерировать'))
+        ),
+        V('div.code-label').of('Код блока (plain-lib)'),
+        V('textarea.code-ta')
+          ('spellcheck', 'false')
+          ('rows', 1)
+          .ref(el => { imm(() => { el.value = Q(block.codeDraft); scheduleAutoGrow(el); }); })
+          .on('input', e => { block.codeDraft.$(e.target.value); autoGrow(e.target); }),
+        V('div.btn-row').of(
+          V('button.btn').on('click', () => applyCodeDraft(block)).of('Применить к лендингу')
+        ),
+        V('div.card-foot').of(
+          V('div')
+            .css('card-msg')
+            .css('err', () => Q(block.status) === 'err')
+            .css('ok', () => Q(block.status) === 'ok')
+            .of(calc(() => Q(block.message)))
+        )
+      );
+  }
+
+  // ---------- Компонент: пустое состояние (блоков нет) ----------
+  // Применяется как: V(emptyStateNode) (без пропсов).
+  function emptyStateNode(){
+    return V('div.empty-state').of(
+      V('div').of('Блоков нет.'),
+      V('button.btn').style('margin-top:10px;').on('click', addEmptyBlock).of('Добавить блок')
+    );
+  }
+
+  // ---------- Сборка интерфейса ----------
+  function buildHeader(){
+    return V('header').of(
+      V('div').of(
+        V('h1').of('Конструктор лендинга'),
+        V('div.sub').of('Промпты справа → блоки в iframe слева, через Chrome ', V('code').of('LanguageModel'))
+      ),
+      V('div').style('display:flex;align-items:center;gap:10px;').of(
+        V('div.status-pill').of(
+          V('span')('className', calc(() => 'dot ' + Q(apiDotClass))),
+          V('span').of(calc(() => Q(apiStatusText)))
+        ),
+        V('button.btn.primary')('disabled', sessionBusy).on('click', regenerateAll).of('Перегенерировать всё')
+      )
+    );
+  }
+
+  function buildPaneLeft(){
+    return V('div')
+      .css('pane-left')
+      .css('pane-left-hidden', () => Q(panelMode) === 'full')
+      .of(
+      V('div.frame-bar').of(
+        V('span').of('Предпросмотр лендинга'),
+        V('span').style('color:var(--text-dim);text-align:right;margin-left:auto;').of('обновляется автоматически')
+      ),
+      V('iframe')
+        ('id', 'preview')
+        ('title', 'Предпросмотр лендинга')
+        ('sandbox', 'allow-scripts')
+        ('srcdoc', calc(() => buildPreviewDoc(Q(blocks))))
+    );
+  }
+
+  function buildResizer(){
+    return V('div')
+      ('id', 'resizer')
+      ('title', 'Потяните, чтобы изменить ширину')
+      .css('resizer')
+      .css('resizer-hidden', () => Q(panelMode) === 'full' || Q(panelMode) === 'collapsed')
+      .on('pointerdown', onPointerDown);
+  }
+
+  function buildPaneRight(){
+    return V('div')
+      ('id', 'paneRight')
+      .css('pane-right')
+      .css('mode-quarter', () => Q(panelMode) === 'quarter')
+      .css('mode-full', () => Q(panelMode) === 'full')
+      .css('mode-collapsed', () => Q(panelMode) === 'collapsed')
+      // Ручная ширина правой панели (после drag'n'drop) — задаётся реактивно через 'style':
+      // toDom.attr распознаёт Ray/calc и для 'style' тоже (см. fix в движке), так что
+      // отдельный императивный imm() с document.getElementById здесь больше не нужен.
+      ('style', calc(() => {
+        const cw = Q(customWidth);
+        return cw ? `flex:0 0 ${cw}px;min-width:0;max-width:none;` : '';
+      }))
+      .of(
+        V('div.toolbar').of(
+          V('span.toolbar-label').of('Блоки лендинга'),
+          V('div.toolbar-controls').of(
+            V('button.icon-btn')
+              ('id', 'collapseBtn')
+              ('innerHTML', calc(() => Q(panelMode) === 'collapsed' ? ICONS.panelExpand : ICONS.panelCollapse))
+              ('title', calc(() => Q(panelMode) === 'collapsed' ? 'Развернуть панель' : 'Свернуть панель'))
+              .on('click', onCollapseClick),
+            V('button.icon-btn')
+              ('id', 'widthCycleBtn')
+              ('innerHTML', ICONS.panelResize)
+              ('title', calc(() => {
+                const mode = Q(panelMode);
+                const idx = WIDTH_ORDER.indexOf(mode);
+                const next = mode === 'collapsed' ? 'quarter' : WIDTH_ORDER[(idx + 1) % WIDTH_ORDER.length];
+                return next === 'quarter' ? 'Сжать до четверти экрана' : next === 'full' ? 'Развернуть на всю ширину' : 'Вернуть обычную ширину';
+              }))
+              .on('click', onWidthCycleClick)
+          )
+        ),
+        V('div.panel-body').of(
+          V('div')
+            .css('banner')
+            .css('hidden', () => Q(bannerHtml) === null)
+            ('innerHTML', calc(() => Q(bannerHtml) || '')),
+          V('div.blocks').of(
+            calc(() => {
+              const list = Q(blocks);
+              return list.length === 0 ? V(emptyStateNode) : list.map((b, i) =>
+                V(blockCard)('block', b)('index', i)('total', list.length)('key', b.id));
+            })
+          )
+        )
+      );
+  }
+
+  // Плавающая кнопка возврата правой панели: показывается только когда панель свёрнута
+  // (т.к. сама панель в этом режиме занимает 0 ширины и её собственная кнопка не видна),
+  // лежит над левой панелью и не резервирует для себя место в layout'е.
+  function buildFloatingExpandButton(){
+    return V('button')
+      ('id', 'floatingExpandBtn')
+      .css('floating-expand-btn')
+      .css('hidden', () => Q(panelMode) !== 'collapsed')
+      ('innerHTML', ICONS.panelExpand)
+      ('title', 'Развернуть панель')
+      .on('click', onCollapseClick);
+  }
+
+  // ---------- Монтирование ----------
+  // Header и main монтируются напрямую в #appRoot (без лишнего оборачивающего div),
+  // чтобы flex-колонка body->#appRoot->header+main работала без разрывов.
+  toDom.itm(document.getElementById('appRoot'), () => [
+    V(buildHeader),
+    V('main')('id', 'mainEl').of(
+      V(buildPaneLeft),
+      V(buildResizer),
+      V(buildPaneRight),
+      V(buildFloatingExpandButton)
+    )
+  ]);
+
+  // ---------- Перетаскивание разделителя (требует измерений реальных DOM-узлов) ----------
+  let dragging = false, startX = 0, startWidth = 0;
+
+  function onPointerDown(e){
+    if (Q(panelMode) === 'full' || Q(panelMode) === 'collapsed') return;
+    dragging = true;
+    startX = e.clientX;
+    startWidth = document.getElementById('paneRight').getBoundingClientRect().width;
+    const resizerEl = document.getElementById('resizer');
+    resizerEl.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    // Пока тащим влево, курсор проходит над iframe с превью — это отдельный документ,
+    // и без этого его содержимое "съедает" pointermove, не давая ему долетать до window.
+    // Отключаем ему события указателя на время драга и захватываем указатель на разделителе,
+    // чтобы движение отслеживалось даже когда курсор уходит за пределы самого разделителя.
+    const previewEl = document.getElementById('preview');
+    if (previewEl) previewEl.style.pointerEvents = 'none';
+    if (resizerEl.setPointerCapture && e.pointerId != null) {
+      try { resizerEl.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+    e.preventDefault();
+  }
+  function onPointerMove(e){
+    if (!dragging) return;
+    const delta = e.clientX - startX;
+    let newWidth = startWidth - delta;
+    const mainWidth = document.getElementById('mainEl').getBoundingClientRect().width;
+    const minWidth = 300;
+    const maxWidth = Math.max(minWidth, mainWidth - 240);
+    newWidth = Math.min(maxWidth, Math.max(minWidth, newWidth));
+    customWidth.$(newWidth);
+    panelMode.$('default');
+    modeBeforeCollapse = 'default';
+  }
+  function onPointerUp(){
+    if (!dragging) return;
+    dragging = false;
+    const rsz = document.getElementById('resizer');
+    if (rsz) rsz.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    const previewEl = document.getElementById('preview');
+    if (previewEl) previewEl.style.pointerEvents = '';
+  }
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
+
+
+  // ---------- Старт ----------
+  checkApi();
+})();
+</script>
+</body>
+</html>
